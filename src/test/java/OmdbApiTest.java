@@ -1,64 +1,52 @@
-import io.restassured.RestAssured;
+import helper.DataProviderHelper;
+import helper.MessageResource;
 import io.restassured.response.Response;
+import model.GetResponse;
 import org.hamcrest.Matchers;
 import org.testng.annotations.Test;
+import spec.ResponseSpec;
+
+import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.testng.AssertJUnit.assertNotNull;
 
-public class OmdbApiTest {
-    public static String errorMessage = "No API key provided";
+public class OmdbApiTest extends BaseServiceTest {
 
-    @Test
-    public void shouldSearchByTitleAndYear(){
-        Response response = RestAssured.given()
-                .queryParam("t", "Harry Potter")
-                .queryParam("y", 2011)
-                .queryParam("apiKey", "52cd129d")
-                .get("http://www.omdbapi.com")
-                .then()
-                .statusCode(200)
-                .extract().response();
+    @Test(dataProvider = "title",dataProviderClass = DataProviderHelper.class)
+    public void shouldSearchByTitleAndYear(String title) {
+        Map<String, Object> titleAndYear = requestMaps.titleAndYearMap(title);
+
+        Response response = byIdOrTitleService.get(titleAndYear, ResponseSpec.checkStatusCodeOk());
+        GetResponse as = response.as(GetResponse.class);
 
         response.prettyPeek();
-        assertThat(response.getBody().jsonPath().getString("Title"), Matchers.containsString("Harry"));
+        assertThat(as.getTitle(), Matchers.containsString(title));
     }
 
     @Test
-    public void shouldSearchByImdbId(){
-        Response byIdOrTitle = RestAssured.given()
-                .queryParam("t", "Harry Potter")
-                .queryParam("y", 2011)
-                .queryParam("apiKey", "52cd129d")
-                .get("http://www.omdbapi.com")
-                .then()
-                .statusCode(200)
-                .extract()
-                .response();
+    public void shouldSearchByImdbId() {
+        Map<String, Object> titleAndYear = requestMaps.titleAndYearMap("Harry Potter");
+
+        Response byIdOrTitle = byIdOrTitleService.get(titleAndYear, ResponseSpec.checkStatusCodeOk());
 
         String imdbID = byIdOrTitle.getBody().jsonPath().getString("imdbID");
         assertNotNull(imdbID);
 
-        Response bySearch = RestAssured.given()
-                .queryParam("i", imdbID)
-                .queryParam("apiKey", "52cd129d")
-                .get("http://www.omdbapi.com")
-                .then()
-                .extract().response();
+        Map<String, Object> bySearchParams = requestMaps.imdbIdMap(imdbID);
 
-        assertThat(bySearch.getStatusCode(),Matchers.is(200));
-        assertThat(byIdOrTitle.getBody().jsonPath().getString("Title"),Matchers.is(bySearch.getBody().jsonPath().getString("Title")));
+        Response bySearch = byIdOrTitleService.get(bySearchParams, ResponseSpec.checkStatusCodeOk());
+
+        assertThat(bySearch.getStatusCode(), Matchers.is(200));
+        assertThat(byIdOrTitle.getBody().jsonPath().getString("Title"), Matchers.is(bySearch.getBody().jsonPath().getString("Title")));
     }
 
     @Test
-    public void shouldNotGetResponseWithoutApiKey(){
-        Response response = RestAssured.given()
-                .queryParam("t", "Harry Potter")
-                .get("http://www.omdbapi.com")
-                .then()
-                .statusCode(401)
-                .extract().response();
+    public void shouldNotGetResponseWithoutApiKey() {
+        Map<String, Object> titleMap = requestMaps.titleMap();
+        Response response = byIdOrTitleService.get(titleMap, ResponseSpec.checkStatusCodeUnauthorized());
 
-        assertThat(response.getBody().jsonPath().getString("Error"), Matchers.containsString(errorMessage));
+        String message = MessageResource.getMessage("no.api.key");
+        assertThat(response.getBody().jsonPath().getString("Error"), Matchers.containsString(message));
     }
 }
